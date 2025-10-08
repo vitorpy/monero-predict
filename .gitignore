@@ -1,1 +1,15 @@
+# Rust build artifacts
 /target
+Cargo.lock
+
+# FHE keys and bet data
+client_key.bin
+server_key.bin
+*.nonce
+
+# Monero regtest data
+*.keys
+monero-wallet-cli.log
+
+# Claude
+.claude/settings.local.json
