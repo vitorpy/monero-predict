@@ -11,6 +11,11 @@ path = "src/bin/bettor.rs"
 [[bin]]
 name = "benchmark_gpu"
 path = "src/bin/benchmark_gpu.rs"
+required-features = ["gpu"]
+
+[features]
+default = []
+gpu = []
 
 [dependencies]
 anyhow = "1.0.100"
