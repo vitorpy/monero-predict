@@ -1,0 +1,15 @@
+{
+  "name": "monero-predict-fhe-client",
+  "type": "module",
+  "version": "0.1.0",
+  "files": [
+    "monero_predict_fhe_client_bg.wasm",
+    "monero_predict_fhe_client.js",
+    "monero_predict_fhe_client.d.ts"
+  ],
+  "main": "monero_predict_fhe_client.js",
+  "types": "monero_predict_fhe_client.d.ts",
+  "sideEffects": [
+    "./snippets/*"
+  ]
+}
