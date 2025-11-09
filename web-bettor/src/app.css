@@ -1,0 +1,27 @@
+/* Define CSS layer ordering before importing WebTUI */
+@layer base, utils, components;
+
+/* Import WebTUI base stylesheet */
+@import '@webtui/css/base.css';
+
+/* Import WebTUI components */
+@import '@webtui/css/components/button.css';
+@import '@webtui/css/components/input.css';
+@import '@webtui/css/components/badge.css';
+@import '@webtui/css/components/dialog.css';
+@import '@webtui/css/components/typography.css';
+@import '@webtui/css/components/view.css';
+@import '@webtui/css/components/progress.css';
+
+/* Import Catppuccin Mocha theme (must be after all other WebTUI imports) */
+@import '@webtui/theme-catppuccin';
+
+/* Global terminal-style overrides */
+:root {
+	font-family: 'Courier New', 'Courier', monospace;
+}
+
+body {
+	margin: 0;
+	padding: 0;
+}
