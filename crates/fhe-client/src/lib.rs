@@ -22,7 +22,7 @@ pub mod wasm;
 
 // Re-export main types for convenience
 pub use keys::FheKeyPair;
-pub use crypto::{encrypt_bet, EncryptedBet};
+pub use crypto::{encrypt_bet, decrypt_outcome, decrypt_amount, EncryptedBet};
 pub use commitment::{generate_nonce, compute_commitment};
 
 #[cfg(feature = "wasm")]
