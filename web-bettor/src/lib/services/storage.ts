@@ -7,6 +7,13 @@ export interface ClientKey {
 	createdAt: number;
 }
 
+export interface FheKeys {
+	id: string;
+	clientKeyData: Uint8Array; // ~20MB
+	serverKeyData: Uint8Array; // ~115MB
+	createdAt: number;
+}
+
 export interface WalletData {
 	id: string;
 	seedPhrase: string; // TODO: Encrypt with user password
@@ -33,15 +40,24 @@ export interface Bet {
 // Dexie database class
 class BettorDatabase extends Dexie {
 	clientKeys!: EntityTable<ClientKey, 'id'>;
+	fheKeys!: EntityTable<FheKeys, 'id'>;
 	wallet!: EntityTable<WalletData, 'id'>;
 	bets!: EntityTable<Bet, 'betId'>;
 
 	constructor() {
 		super('BettorDB');
 
+		// Version 1: Initial schema
 		this.version(1).stores({
-			// Define tables and indexes
 			clientKeys: 'id, createdAt',
+			wallet: 'id, primaryAddress, lastSync',
+			bets: 'betId, marketId, timestamp, status, [marketId+status]'
+		});
+
+		// Version 2: Add FHE keys table for large binary data (~135MB total)
+		this.version(2).stores({
+			clientKeys: 'id, createdAt',
+			fheKeys: 'id, createdAt',
 			wallet: 'id, primaryAddress, lastSync',
 			bets: 'betId, marketId, timestamp, status, [marketId+status]'
 		});
@@ -63,6 +79,54 @@ export async function saveClientKey(keyData: Uint8Array): Promise<void> {
 
 export async function getClientKey(): Promise<ClientKey | undefined> {
 	return await db.clientKeys.get('default');
+}
+
+// FHE key management
+export async function saveFheKeys(
+	clientKeyData: Uint8Array,
+	serverKeyData: Uint8Array
+): Promise<void> {
+	const totalSize = clientKeyData.byteLength + serverKeyData.byteLength;
+	console.log(
+		`[Storage] Saving FHE keys: client=${(clientKeyData.byteLength / 1024 / 1024).toFixed(1)}MB, server=${(serverKeyData.byteLength / 1024 / 1024).toFixed(1)}MB, total=${(totalSize / 1024 / 1024).toFixed(1)}MB`
+	);
+
+	try {
+		await db.fheKeys.put({
+			id: 'default',
+			clientKeyData,
+			serverKeyData,
+			createdAt: Date.now()
+		});
+		console.log('[Storage] FHE keys saved successfully');
+	} catch (error) {
+		if (error instanceof Error && error.name === 'QuotaExceededError') {
+			console.error('[Storage] Quota exceeded! FHE keys are ~135MB. Check browser storage limits.');
+			throw new Error(
+				'Storage quota exceeded. FHE keys require ~135MB. Please free up space or use a different browser.'
+			);
+		}
+		throw error;
+	}
+}
+
+export async function loadFheKeys(): Promise<FheKeys | null> {
+	const keys = await db.fheKeys.get('default');
+	if (keys) {
+		const totalSize = keys.clientKeyData.byteLength + keys.serverKeyData.byteLength;
+		console.log(`[Storage] Loaded FHE keys: ${(totalSize / 1024 / 1024).toFixed(1)}MB`);
+	}
+	return keys ?? null;
+}
+
+export async function deleteFheKeys(): Promise<void> {
+	await db.fheKeys.delete('default');
+	console.log('[Storage] FHE keys deleted');
+}
+
+export async function hasFheKeys(): Promise<boolean> {
+	const keys = await db.fheKeys.get('default');
+	return keys !== undefined;
 }
 
 export async function saveWallet(data: Omit<WalletData, 'id' | 'createdAt'>): Promise<void> {
@@ -124,6 +188,8 @@ export async function downloadNonceFile(betId: string): Promise<void> {
 
 export async function clearAllData(): Promise<void> {
 	await db.clientKeys.clear();
+	await db.fheKeys.clear();
 	await db.wallet.clear();
 	await db.bets.clear();
+	console.log('[Storage] All data cleared');
 }
