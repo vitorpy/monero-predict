@@ -2,7 +2,7 @@
 	import type { PageData } from './$types';
 	import { encryptBet, hasKeys } from '$lib/services/fhe';
 	import { saveBet, downloadNonceFile, updateBetStatus } from '$lib/services/storage';
-	import { hasWallet, createTransaction, formatXMR } from '$lib/services/wallet';
+	import { hasWallet, createTransaction, formatXMR, getBalance } from '$lib/services/wallet';
 	import { submitBet, getCoordinatorAddress } from '$lib/services/coordinator';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
@@ -26,6 +26,9 @@
 	// Wallet/FHE status
 	let fheReady = $state(false);
 	let walletReady = $state(false);
+	let walletBalance = $state<bigint | null>(null);
+	let unlockedBalance = $state<bigint | null>(null);
+	let loadingBalance = $state(false);
 
 	// Coordinator address (will be fetched)
 	let coordinatorAddress = $state('4...'); // Placeholder
@@ -52,6 +55,20 @@
 		} catch (error) {
 			console.warn('[Market] Failed to fetch coordinator address:', error);
 		}
+
+		// Fetch wallet balance
+		if (walletReady) {
+			try {
+				loadingBalance = true;
+				const balance = await getBalance(true); // Use cached balance
+				walletBalance = balance.balance;
+				unlockedBalance = balance.unlocked;
+			} catch (error) {
+				console.warn('[Market] Failed to fetch balance:', error);
+			} finally {
+				loadingBalance = false;
+			}
+		}
 	});
 
 	async function placeBet() {
@@ -70,6 +87,19 @@
 		if (!walletReady) {
 			errorMessage = 'Wallet not ready. Please complete setup first.';
 			return;
+		}
+
+		// Balance validation
+		if (unlockedBalance !== null) {
+			const amountPiconeros = BigInt(Math.floor(amountNum * 1e12));
+			const estimatedFee = BigInt(Math.floor(0.001 * 1e12)); // Estimate 0.001 XMR fee
+			const required = amountPiconeros + estimatedFee;
+
+			if (required > unlockedBalance) {
+				const availableXMR = Number(unlockedBalance) / 1e12;
+				errorMessage = `Insufficient balance. Available: ${availableXMR.toFixed(6)} XMR (need ${(Number(required) / 1e12).toFixed(6)} XMR including fee)`;
+				return;
+			}
 		}
 
 		encrypting = true;
@@ -204,26 +234,44 @@
 	<h1>📊 Market Details</h1>
 	<p class="market-id">Market ID: <code>{data.marketId}</code></p>
 
-	<!-- Market Info (placeholder) -->
-	<section class="market-info">
-		<h2>Market Question</h2>
-		<p class="question">Will Bitcoin reach $100k by end of 2025?</p>
-		<div class="stats">
-			<div class="stat">
-				<span class="label">YES Pool:</span>
-				<span class="value">~50 XMR</span>
+	<!-- Market Info -->
+	{#if data.error}
+		<section class="error-box">
+			<p>❌ Failed to load market</p>
+			<p>{data.error}</p>
+			<button is-="button" onclick={() => window.location.reload()}>Retry</button>
+		</section>
+	{:else if data.market}
+		<section class="market-info">
+			<h2>Market Question</h2>
+			<p class="question">{data.market.question}</p>
+			<div class="stats">
+				<div class="stat">
+					<span class="label">YES Pool:</span>
+					<span class="value">{data.market.yesPool} XMR</span>
+				</div>
+				<div class="stat">
+					<span class="label">NO Pool:</span>
+					<span class="value">{data.market.noPool} XMR</span>
+				</div>
+				<div class="stat">
+					<span class="label">Resolution Date:</span>
+					<span class="value">{data.market.resolutionDate}</span>
+				</div>
+				<div class="stat">
+					<span class="label">Status:</span>
+					<span class="value badge-{data.market.status}">{data.market.status.toUpperCase()}</span>
+				</div>
 			</div>
-			<div class="stat">
-				<span class="label">NO Pool:</span>
-				<span class="value">~50 XMR</span>
-			</div>
-			<div class="stat">
-				<span class="label">Resolution Date:</span>
-				<span class="value">2025-12-31</span>
-			</div>
-		</div>
-		<p class="muted">Note: This is placeholder data. Actual market data will come from coordinator API.</p>
-	</section>
+			{#if data.market.description}
+				<p class="description">{data.market.description}</p>
+			{/if}
+		</section>
+	{:else}
+		<section class="loading-box">
+			<p>Loading market data...</p>
+		</section>
+	{/if}
 
 	<!-- Bet Placement Form -->
 	{#if !betPlaced}
@@ -268,6 +316,13 @@
 						disabled={encrypting}
 					/>
 					<p class="hint">Minimum: 0.001 XMR</p>
+					{#if loadingBalance}
+						<p class="balance-info loading">Loading balance...</p>
+					{:else if unlockedBalance !== null}
+						<p class="balance-info">
+							Available: {(Number(unlockedBalance) / 1e12).toFixed(6)} XMR
+						</p>
+					{/if}
 				</div>
 
 				{#if errorMessage}
@@ -443,6 +498,17 @@
 		font-size: 0.9rem;
 		color: var(--text-secondary, #999);
 		margin-top: 0.25rem;
+	}
+
+	.balance-info {
+		font-size: 0.9rem;
+		color: #7dff7d;
+		margin-top: 0.5rem;
+		font-weight: 500;
+	}
+
+	.balance-info.loading {
+		color: var(--text-secondary, #999);
 	}
 
 	.info {
