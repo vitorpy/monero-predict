@@ -365,7 +365,14 @@
 				</div>
 				<div class="info-item">
 					<span class="label">Transaction Hash:</span>
-					<code class="hash">{txHash.substring(0, 32)}...</code>
+					<a
+						href="https://xmrchain.net/tx/{txHash}"
+						target="_blank"
+						rel="noopener noreferrer"
+						class="tx-link"
+					>
+						<code class="hash">{txHash.substring(0, 32)}...</code> ↗
+					</a>
 				</div>
 				<div class="info-item">
 					<span class="label">Transaction Fee:</span>
@@ -554,6 +561,16 @@
 
 	.hash {
 		word-break: break-all;
+	}
+
+	.tx-link {
+		color: var(--color-accent, #88c0d0);
+		text-decoration: none;
+	}
+
+	.tx-link:hover {
+		text-decoration: underline;
+		color: var(--color-primary, #7dd7ff);
 	}
 
 	.actions {
