@@ -1,7 +1,7 @@
 <script lang="ts">
 	import type { PageData } from './$types';
-	import { encryptBet, hasKeys } from '$lib/services/fhe';
-	import { saveBet, downloadNonceFile, updateBetStatus } from '$lib/services/storage';
+	import { encryptBet, hasKeys, exportServerKey } from '$lib/services/fhe';
+	import { saveBet, downloadNonceFile, updateBetStatus, getAllBets } from '$lib/services/storage';
 	import { hasWallet, createTransaction, formatXMR, getBalance } from '$lib/services/wallet';
 	import { submitBet, getCoordinatorAddress } from '$lib/services/coordinator';
 	import { onMount } from 'svelte';
@@ -189,14 +189,31 @@
 
 			console.log('[Market] Transaction broadcasted:', tx.txHash);
 
-			// Step 2: Submit encrypted bet to coordinator API
+			// Step 2: Check if this is the first bet (need to upload server key)
+			const allBets = await getAllBets();
+			const isFirstBet = allBets.length === 0;
+
+			let serverKey: Uint8Array | undefined = undefined;
+			if (isFirstBet) {
+				console.log('[Market] First bet detected - exporting server key...');
+				try {
+					serverKey = await exportServerKey();
+					console.log(`[Market] Server key exported: ${(serverKey.length / 1024 / 1024).toFixed(1)}MB`);
+				} catch (error) {
+					console.error('[Market] Failed to export server key:', error);
+					throw new Error('Failed to export server key for first bet');
+				}
+			}
+
+			// Step 3: Submit encrypted bet to coordinator API
 			console.log('[Market] Submitting bet to coordinator...');
 			await submitBet({
 				marketId: data.marketId,
 				encryptedOutcome: encryptedBetData.outcome,
 				encryptedAmount: encryptedBetData.amount,
 				commitment,
-				txHash: tx.txHash
+				txHash: tx.txHash,
+				serverKey // Include if first bet
 			});
 
 			// Update bet status to active
