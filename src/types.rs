@@ -1,5 +1,10 @@
 // src/types.rs
 use serde::{Deserialize, Serialize};
+use axum::{
+    http::StatusCode,
+    response::{IntoResponse, Response},
+    Json,
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MarketConfig {
@@ -43,4 +48,84 @@ pub struct PayoutClaim {
     pub bet_id: [u8; 32],
     pub nonce: [u8; 32],        // Proves knowledge of bet
     pub payout_address: String,  // Monero address
+}
+
+// API Response Types
+
+#[derive(Debug, Serialize)]
+pub struct ApiError {
+    pub error: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub details: Option<String>,
+}
+
+impl ApiError {
+    pub fn new(error: impl Into<String>) -> Self {
+        Self {
+            error: error.into(),
+            details: None,
+        }
+    }
+
+    pub fn with_details(error: impl Into<String>, details: impl Into<String>) -> Self {
+        Self {
+            error: error.into(),
+            details: Some(details.into()),
+        }
+    }
+}
+
+impl IntoResponse for ApiError {
+    fn into_response(self) -> Response {
+        let status = StatusCode::INTERNAL_SERVER_ERROR;
+        (status, Json(self)).into_response()
+    }
+}
+
+impl From<anyhow::Error> for ApiError {
+    fn from(err: anyhow::Error) -> Self {
+        ApiError::new(format!("Internal error: {}", err))
+    }
+}
+
+#[derive(Debug, Serialize)]
+pub struct MarketSummary {
+    pub id: String,
+    pub question: String,
+    pub description: String,
+    pub resolution_date: String,
+    pub yes_pool: String,  // XMR format
+    pub no_pool: String,   // XMR format
+    pub status: String,    // "open" | "closed" | "resolved"
+}
+
+#[derive(Debug, Serialize)]
+pub struct MarketStats {
+    pub id: String,
+    pub question: String,
+    pub description: String,
+    pub yes_pool: String,
+    pub no_pool: String,
+    pub total_bets: usize,
+    pub status: String,
+    pub resolution_date: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct CoordinatorAddressResponse {
+    pub address: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct HealthResponse {
+    pub status: String,
+    pub version: String,
+}
+
+// Utility Functions
+
+/// Convert piconeros to XMR string (12 decimal places)
+pub fn piconeros_to_xmr(piconeros: u64) -> String {
+    let xmr = piconeros as f64 / 1e12;
+    format!("{:.12}", xmr)
 }

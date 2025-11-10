@@ -45,21 +45,25 @@ export interface BetSubmission {
  * @returns Promise with array of markets
  */
 export async function getMarkets(config: CoordinatorConfig = defaultConfig): Promise<Market[]> {
-	// TODO: Implement actual API call
-	console.log('[Coordinator] Would fetch markets from:', config.apiUrl);
+	const response = await fetch(`${config.apiUrl}/markets`);
 
-	// Return placeholder data for now
-	return [
-		{
-			id: 'test-market',
-			question: 'Will Bitcoin reach $100k by end of 2025?',
-			description: 'Market resolves YES if Bitcoin (BTC) trades at or above $100,000 on any major exchange by December 31, 2025 23:59:59 UTC.',
-			resolutionDate: '2025-12-31',
-			yesPool: '100.5',
-			noPool: '50.2',
-			status: 'open'
-		}
-	];
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+		throw new Error(`Failed to fetch markets: ${error.error || response.statusText}`);
+	}
+
+	const data = await response.json();
+
+	// Map snake_case from Rust to camelCase for TypeScript
+	return data.map((market: any) => ({
+		id: market.id,
+		question: market.question,
+		description: market.description,
+		resolutionDate: market.resolution_date,
+		yesPool: market.yes_pool,
+		noPool: market.no_pool,
+		status: market.status
+	}));
 }
 
 /**
@@ -72,18 +76,24 @@ export async function getMarket(
 	marketId: string,
 	config: CoordinatorConfig = defaultConfig
 ): Promise<Market> {
-	// TODO: Implement actual API call
-	console.log('[Coordinator] Would fetch market:', marketId, 'from:', config.apiUrl);
+	const response = await fetch(`${config.apiUrl}/market/${marketId}/stats`);
 
-	// Return placeholder data
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+		throw new Error(`Failed to fetch market: ${error.error || response.statusText}`);
+	}
+
+	const data = await response.json();
+
+	// Map snake_case from Rust to camelCase for TypeScript
 	return {
-		id: marketId,
-		question: 'Will Bitcoin reach $100k by end of 2025?',
-		description: 'Market resolves YES if Bitcoin (BTC) trades at or above $100,000 on any major exchange by December 31, 2025 23:59:59 UTC.',
-		resolutionDate: '2025-12-31',
-		yesPool: '100.5',
-		noPool: '50.2',
-		status: 'open'
+		id: data.id,
+		question: data.question,
+		description: data.description,
+		resolutionDate: data.resolution_date,
+		yesPool: data.yes_pool,
+		noPool: data.no_pool,
+		status: data.status
 	};
 }
 
@@ -97,21 +107,27 @@ export async function submitBet(
 	bet: BetSubmission,
 	config: CoordinatorConfig = defaultConfig
 ): Promise<void> {
-	// TODO: Implement actual API call
-	console.log('[Coordinator] Would submit bet to:', config.apiUrl);
-	console.log('[Coordinator] Bet data:', {
-		marketId: bet.marketId,
-		commitment: bet.commitment,
-		txHash: bet.txHash,
-		encryptedOutcomeSize: bet.encryptedOutcome.length,
-		encryptedAmountSize: bet.encryptedAmount.length
+	const response = await fetch(`${config.apiUrl}/market/${bet.marketId}/bet`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({
+			encrypted_outcome: Array.from(bet.encryptedOutcome),
+			encrypted_amount: Array.from(bet.encryptedAmount),
+			commitment: bet.commitment,
+			tx_hash: bet.txHash,
+			server_key: bet.serverKey ? Array.from(bet.serverKey) : undefined
+		})
 	});
 
-	// Simulate API call
-	await new Promise((resolve) => setTimeout(resolve, 500));
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+		throw new Error(`Failed to submit bet: ${error.error || response.statusText}`);
+	}
 
-	// For now, just log success
-	console.log('[Coordinator] Bet submitted successfully (placeholder)');
+	const data = await response.json();
+	console.log('[Coordinator] Bet submitted successfully. Bet ID:', data.bet_id);
 }
 
 /**
@@ -122,11 +138,15 @@ export async function submitBet(
 export async function getCoordinatorAddress(
 	config: CoordinatorConfig = defaultConfig
 ): Promise<string> {
-	// TODO: Implement actual API call
-	console.log('[Coordinator] Would fetch coordinator address from:', config.apiUrl);
+	const response = await fetch(`${config.apiUrl}/coordinator/address`);
 
-	// Return placeholder address
-	return '4...'; // TODO: Return actual Monero address from coordinator
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+		throw new Error(`Failed to fetch coordinator address: ${error.error || response.statusText}`);
+	}
+
+	const data = await response.json();
+	return data.address;
 }
 
 /**
@@ -158,11 +178,17 @@ export async function pingCoordinator(
 	config: CoordinatorConfig = defaultConfig
 ): Promise<boolean> {
 	try {
-		// TODO: Implement actual health check endpoint
-		console.log('[Coordinator] Would ping:', config.apiUrl);
+		const response = await fetch(`${config.apiUrl}/health`, {
+			method: 'GET',
+			signal: AbortSignal.timeout(5000) // 5 second timeout
+		});
 
-		// For now, return false (not implemented)
-		return false;
+		if (!response.ok) {
+			return false;
+		}
+
+		const data = await response.json();
+		return data.status === 'ok';
 	} catch (error) {
 		console.error('[Coordinator] Ping failed:', error);
 		return false;
