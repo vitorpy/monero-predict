@@ -22,6 +22,7 @@
 	let errorMessage = $state('');
 	let broadcasting = $state(false);
 	let broadcasted = $state(false);
+	let showConfirmModal = $state(false);
 
 	// Wallet/FHE status
 	let fheReady = $state(false);
@@ -278,7 +279,19 @@
 		<section class="bet-form">
 			<h2>Place Encrypted Bet</h2>
 
-			{#if !fheReady}
+			{#if data.market && data.market.status !== 'open'}
+				<div class="warning-box {data.market.status}">
+					{#if data.market.status === 'closed'}
+						<p>🔒 Market Closed</p>
+						<p>This market is no longer accepting bets. The betting deadline has passed.</p>
+					{:else if data.market.status === 'resolved'}
+						<p>✅ Market Resolved</p>
+						<p>This market has been resolved and is no longer accepting bets.</p>
+						<p>Check your bet history to claim winnings if you participated.</p>
+						<a href="/bets"><button is-="button primary">View My Bets</button></a>
+					{/if}
+				</div>
+			{:else if !fheReady}
 				<div class="warning-box">
 					<p>⚠️ FHE keys not found</p>
 					<p>You need to complete the setup first to place bets.</p>
@@ -391,8 +404,8 @@
 			{#if !broadcasted}
 				<div class="broadcast-section">
 					<p class="warning-text">
-						⚠️ Transaction created but NOT broadcasted yet. You can review the details and
-						broadcast when ready.
+						⚠️ Transaction created but NOT broadcasted yet. Review the details below and
+						confirm to broadcast.
 					</p>
 
 					{#if errorMessage}
@@ -403,15 +416,72 @@
 
 					<button
 						is-="button primary large"
-						onclick={broadcastBet}
+						onclick={() => (showConfirmModal = true)}
 						disabled={broadcasting}
 					>
-						{#if broadcasting}
-							⏳ Broadcasting...
-						{:else}
-							📡 Broadcast Transaction & Submit Bet
-						{/if}
+						📡 Review & Broadcast
 					</button>
+
+					<!-- Confirmation Modal -->
+					{#if showConfirmModal}
+						<div class="modal-overlay" onclick={() => (showConfirmModal = false)}>
+							<div class="modal-content" onclick={(e) => e.stopPropagation()}>
+								<h3>⚠️ Confirm Bet Broadcast</h3>
+								<p class="modal-desc">
+									You are about to broadcast your encrypted bet to the Monero network and
+									submit it to the coordinator. This action cannot be undone.
+								</p>
+
+								<div class="confirm-details">
+									<h4>Bet Summary:</h4>
+									<div class="detail-row">
+										<span class="label">Market:</span>
+										<span class="value">{data.market?.question || data.marketId}</span>
+									</div>
+									<div class="detail-row">
+										<span class="label">Your Prediction:</span>
+										<span class="value outcome-{outcome.toLowerCase()}">{outcome}</span>
+									</div>
+									<div class="detail-row">
+										<span class="label">Bet Amount:</span>
+										<span class="value">{amount} XMR</span>
+									</div>
+									<div class="detail-row">
+										<span class="label">Transaction Fee:</span>
+										<span class="value">{txFee} XMR</span>
+									</div>
+									<div class="detail-row total">
+										<span class="label">Total Cost:</span>
+										<span class="value">{(parseFloat(amount) + parseFloat(txFee)).toFixed(6)} XMR</span>
+									</div>
+								</div>
+
+								<div class="modal-actions">
+									<button
+										is-="button secondary"
+										onclick={() => (showConfirmModal = false)}
+										disabled={broadcasting}
+									>
+										Cancel
+									</button>
+									<button
+										is-="button primary"
+										onclick={() => {
+											showConfirmModal = false;
+											broadcastBet();
+										}}
+										disabled={broadcasting}
+									>
+										{#if broadcasting}
+											⏳ Broadcasting...
+										{:else}
+											✅ Confirm & Broadcast
+										{/if}
+									</button>
+								</div>
+							</div>
+						</div>
+					{/if}
 				</div>
 			{:else}
 				<div class="success-box">
@@ -480,6 +550,30 @@
 
 	.stat .value {
 		font-weight: bold;
+	}
+
+	.stat .value.badge-open,
+	.stat .value.badge-closed,
+	.stat .value.badge-resolved {
+		padding: 0.25rem 0.75rem;
+		border-radius: 4px;
+		font-size: 0.85rem;
+		font-weight: bold;
+	}
+
+	.stat .value.badge-open {
+		background: #2d5a2d;
+		color: #7dff7d;
+	}
+
+	.stat .value.badge-closed {
+		background: #5a4d2d;
+		color: #ffd77d;
+	}
+
+	.stat .value.badge-resolved {
+		background: #2d4d5a;
+		color: #7dd7ff;
 	}
 
 	.form-group {
@@ -592,6 +686,16 @@
 		margin: 1rem 0;
 	}
 
+	.warning-box.closed {
+		border-left-color: #ffd77d;
+		background: rgba(255, 215, 125, 0.1);
+	}
+
+	.warning-box.resolved {
+		border-left-color: #7dd7ff;
+		background: rgba(125, 215, 255, 0.1);
+	}
+
 	.error-box {
 		background: var(--bg-secondary, #1a1a1a);
 		border-left: 4px solid var(--error, #bf616a);
@@ -633,5 +737,105 @@
 	.success-box .info {
 		color: var(--text-secondary, #999);
 		margin-top: 0.5rem;
+	}
+
+	/* Modal styles */
+	.modal-overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0, 0, 0, 0.8);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		z-index: 1000;
+		padding: 1rem;
+	}
+
+	.modal-content {
+		background: var(--bg-primary, #0d0d0d);
+		border: 2px solid var(--border, #444);
+		border-radius: 8px;
+		padding: 2rem;
+		max-width: 500px;
+		width: 100%;
+		max-height: 90vh;
+		overflow-y: auto;
+	}
+
+	.modal-content h3 {
+		margin: 0 0 1rem 0;
+		color: var(--warning, #ebcb8b);
+	}
+
+	.modal-desc {
+		color: var(--text-secondary, #999);
+		margin-bottom: 1.5rem;
+		line-height: 1.5;
+	}
+
+	.confirm-details {
+		background: var(--bg-secondary, #1a1a1a);
+		border: 1px solid var(--border, #444);
+		border-radius: 4px;
+		padding: 1rem;
+		margin: 1rem 0 1.5rem 0;
+	}
+
+	.confirm-details h4 {
+		margin: 0 0 0.75rem 0;
+		font-size: 0.95rem;
+		color: var(--text-primary, #e5e5e5);
+	}
+
+	.confirm-details .detail-row {
+		display: flex;
+		justify-content: space-between;
+		gap: 1rem;
+		margin: 0.5rem 0;
+		padding: 0.5rem 0;
+		border-bottom: 1px solid var(--border, #333);
+	}
+
+	.confirm-details .detail-row:last-child {
+		border-bottom: none;
+	}
+
+	.confirm-details .detail-row.total {
+		margin-top: 0.75rem;
+		padding-top: 0.75rem;
+		border-top: 2px solid var(--border, #444);
+		font-weight: bold;
+	}
+
+	.confirm-details .label {
+		color: var(--text-secondary, #999);
+	}
+
+	.confirm-details .value {
+		color: var(--text-primary, #e5e5e5);
+		font-weight: 500;
+	}
+
+	.confirm-details .value.outcome-yes {
+		color: #7dff7d;
+		font-weight: bold;
+	}
+
+	.confirm-details .value.outcome-no {
+		color: #ff7d7d;
+		font-weight: bold;
+	}
+
+	.modal-actions {
+		display: flex;
+		gap: 1rem;
+		margin-top: 1.5rem;
+	}
+
+	.modal-actions button {
+		flex: 1;
 	}
 </style>
