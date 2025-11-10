@@ -162,7 +162,23 @@
 			betPlaced = true;
 		} catch (error) {
 			console.error('[Market] Bet placement failed:', error);
-			errorMessage = error instanceof Error ? error.message : 'Failed to place bet';
+
+			// Provide more helpful error messages
+			if (error instanceof Error) {
+				if (error.message.includes('wallet')) {
+					errorMessage = `Wallet error: ${error.message}. Try syncing your wallet in the setup page.`;
+				} else if (error.message.includes('balance') || error.message.includes('Insufficient')) {
+					errorMessage = error.message; // Already descriptive
+				} else if (error.message.includes('FHE') || error.message.includes('encrypt')) {
+					errorMessage = `Encryption error: ${error.message}. Try regenerating your FHE keys.`;
+				} else if (error.message.includes('network') || error.message.includes('Network')) {
+					errorMessage = `Network error: ${error.message}. Check your internet connection.`;
+				} else {
+					errorMessage = `Failed to place bet: ${error.message}`;
+				}
+			} else {
+				errorMessage = 'Failed to place bet. Please try again.';
+			}
 		} finally {
 			encrypting = false;
 			creatingTx = false;
@@ -223,7 +239,25 @@
 			console.log('[Market] Bet submitted successfully');
 		} catch (error) {
 			console.error('[Market] Broadcast failed:', error);
-			errorMessage = error instanceof Error ? error.message : 'Failed to broadcast transaction';
+
+			// Provide more helpful error messages
+			if (error instanceof Error) {
+				if (error.message.includes('coordinator')) {
+					errorMessage = `Coordinator error: ${error.message}. Make sure the coordinator is running on localhost:8080.`;
+				} else if (error.message.includes('server key')) {
+					errorMessage = `Server key error: ${error.message}. Your FHE keys may be corrupted. Try regenerating them.`;
+				} else if (error.message.includes('transaction') || error.message.includes('broadcast')) {
+					errorMessage = `Transaction broadcast error: ${error.message}. Check your network connection.`;
+				} else if (error.message.includes('network') || error.message.includes('Network')) {
+					errorMessage = `Network error: ${error.message}. Check your internet connection and try again.`;
+				} else if (error.message.includes('timeout') || error.message.includes('Timeout')) {
+					errorMessage = 'Request timed out. The coordinator may be slow or unreachable. Try again.';
+				} else {
+					errorMessage = `Broadcast failed: ${error.message}`;
+				}
+			} else {
+				errorMessage = 'Failed to broadcast transaction. Please try again.';
+			}
 		} finally {
 			broadcasting = false;
 		}
@@ -358,6 +392,11 @@
 				{#if errorMessage}
 					<div class="error-box">
 						<p>❌ {errorMessage}</p>
+						{#if errorMessage.includes('Failed to') || errorMessage.includes('Network')}
+							<button is-="button secondary small" onclick={() => (errorMessage = '')}>
+								Dismiss
+							</button>
+						{/if}
 					</div>
 				{/if}
 
@@ -428,6 +467,14 @@
 					{#if errorMessage}
 						<div class="error-box">
 							<p>❌ {errorMessage}</p>
+							{#if errorMessage.includes('coordinator') || errorMessage.includes('Network')}
+								<p class="error-hint">
+									💡 Make sure the coordinator is running and accessible, then retry.
+								</p>
+							{/if}
+							<button is-="button secondary small" onclick={() => (errorMessage = '')}>
+								Dismiss
+							</button>
 						</div>
 					{/if}
 
@@ -436,7 +483,11 @@
 						onclick={() => (showConfirmModal = true)}
 						disabled={broadcasting}
 					>
-						📡 Review & Broadcast
+						{#if broadcasting}
+							⏳ Broadcasting...
+						{:else}
+							📡 Review & Broadcast
+						{/if}
 					</button>
 
 					<!-- Confirmation Modal -->
@@ -718,6 +769,13 @@
 		border-left: 4px solid var(--error, #bf616a);
 		padding: 1rem;
 		margin: 1rem 0;
+	}
+
+	.error-hint {
+		margin-top: 0.5rem;
+		font-size: 0.9rem;
+		color: var(--text-secondary, #999);
+		font-style: italic;
 	}
 
 	.muted {

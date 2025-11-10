@@ -30,7 +30,11 @@
 			await downloadNonceFile(betId);
 		} catch (err) {
 			console.error('[Bets] Failed to download nonce:', err);
-			alert('Failed to download nonce file');
+			const errorMsg =
+				err instanceof Error
+					? `Failed to download nonce: ${err.message}`
+					: 'Failed to download nonce file. The bet may not exist in local storage.';
+			alert(errorMsg);
 		}
 	}
 
