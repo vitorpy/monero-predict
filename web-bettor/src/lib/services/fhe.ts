@@ -129,7 +129,7 @@ export async function encryptBet(outcomeYes: boolean, amountXMR: number): Promis
 	);
 
 	try {
-		const encrypted = client.encrypt_bet(outcomeYes, piconeros);
+		const encrypted = client.encrypt_bet(outcomeYes, BigInt(piconeros));
 
 		// Convert JsEncryptedBet to EncryptedBet
 		return {
@@ -167,7 +167,7 @@ export async function decryptOutcome(ciphertext: Uint8Array): Promise<boolean> {
  * @param ciphertext - Encrypted amount bytes
  * @returns Amount in piconeros
  */
-export async function decryptAmount(ciphertext: Uint8Array): Promise<number> {
+export async function decryptAmount(ciphertext: Uint8Array): Promise<bigint> {
 	const client = await loadClient();
 
 	try {

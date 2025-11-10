@@ -637,14 +637,19 @@ monero-predict/
 - ✅ Comprehensive documentation
 - ✅ All tests passing (11/11)
 
-### Remaining Epics 🚧
+**Epic 3: Wallet Integration (monero-ts)** ✅
+- ✅ Crypto utilities (PBKDF2 + AES-GCM encryption)
+- ✅ Web Worker architecture for monero-ts
+- ✅ Storage schema v3 with wallet cache
+- ✅ Wallet creation/restoration with encrypted seed
+- ✅ Daemon connection and blockchain sync
+- ✅ Balance tracking (cached + live refresh)
+- ✅ Transaction creation (without relay)
+- ✅ Transaction broadcasting
+- ✅ Coordinator API client (stub)
+- ✅ Complete betting flow UI
 
-**Epic 3: Wallet Integration (monero-ts)** - Next
-- 🚧 monero-ts WASM integration
-- 🚧 Wallet creation/restoration
-- 🚧 Daemon connection and sync
-- 🚧 Transaction creation
-- 🚧 Balance tracking
+### Remaining Epics 🚧
 
 **Epic 4: Coordinator API Extensions**
 - 🚧 Market management endpoints
@@ -673,13 +678,174 @@ monero-predict/
 ### Project Statistics
 
 ```
-Total Issues:      25
-Completed:         20 (80%)
+Total Issues:      35
+Completed:         28 (80%)
 In Progress:       0
 Blocked:           3
-Ready:             2
+Ready:             4
 Avg Lead Time:     0.6 hours
 ```
+
+---
+
+## Epic 3: Wallet Integration - Implementation Details
+
+**Status**: Complete ✅ (2025-11-10)
+**Duration**: ~4 hours
+**Issues Closed**: 10/10 tasks
+
+### Architecture Overview
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Main Thread                          │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  UI Components (Svelte)                          │  │
+│  │  - /setup (wallet creation/restoration)          │  │
+│  │  - / (balance display)                           │  │
+│  │  - /markets/[id] (bet placement + broadcast)     │  │
+│  └───────────────────┬──────────────────────────────┘  │
+│                      │                                   │
+│  ┌───────────────────▼──────────────────────────────┐  │
+│  │  Wallet Service (wallet.ts)                      │  │
+│  │  - createWallet(), restoreWallet()               │  │
+│  │  - syncWallet(), getBalance()                    │  │
+│  │  - createTransaction()                           │  │
+│  └───────────────────┬──────────────────────────────┘  │
+│                      │ postMessage                      │
+└──────────────────────┼──────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│                  Web Worker                             │
+│                                                         │
+│  ┌──────────────────────────────────────────────────┐  │
+│  │  Wallet Worker (wallet.worker.ts)                │  │
+│  │  - Loads monero-ts WASM                          │  │
+│  │  - Handles wallet operations (sync, tx)          │  │
+│  │  - Sends progress updates                        │  │
+│  └───────────────────┬──────────────────────────────┘  │
+│                      │                                   │
+│  ┌───────────────────▼──────────────────────────────┐  │
+│  │  monero-ts (WASM)                                │  │
+│  │  - Full Monero wallet (~7-8MB WASM)             │  │
+│  │  - Connects to node.vern.cc:18081                │  │
+│  └──────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────┘
+                       │
+┌──────────────────────▼──────────────────────────────────┐
+│               IndexedDB (BettorDB v3)                   │
+│                                                         │
+│  - walletData: Encrypted seed phrase                   │
+│  - walletCache: Balance + sync height                  │
+│  - fheKeys: Client + server keys (~135MB)             │
+│  - bets: Bet metadata + nonces                         │
+└─────────────────────────────────────────────────────────┘
+```
+
+### Key Files Created/Modified
+
+1. **`/src/lib/utils/crypto.ts`** (New)
+   - PBKDF2 password derivation (100k iterations)
+   - AES-GCM authenticated encryption
+   - Password validation
+
+2. **`/src/lib/workers/wallet.worker.ts`** (New)
+   - monero-ts operations in Web Worker
+   - Message-passing with main thread
+   - Progress tracking for sync
+
+3. **`/src/lib/services/wallet.ts`** (New)
+   - High-level wallet API
+   - Balance caching
+   - Transaction creation with relay option
+
+4. **`/src/lib/services/coordinator.ts`** (New)
+   - API client stub for coordinator
+   - `submitBet()`, `getMarkets()`, etc.
+
+5. **`/src/lib/services/storage.ts`** (Modified)
+   - Added `WalletCache` table (v3 migration)
+   - Helper functions for wallet cache
+
+6. **`/src/routes/setup/+page.svelte`** (Modified)
+   - Step 2: Wallet creation/restoration UI
+   - Step 3: Blockchain sync UI
+   - Progress bars and status tracking
+
+7. **`/src/routes/+page.svelte`** (Modified)
+   - Balance display with refresh button
+   - Wallet/FHE status badges
+
+8. **`/src/routes/markets/[id]/+page.svelte`** (Modified)
+   - Integrated transaction creation
+   - Broadcast functionality
+   - Coordinator API submission
+
+### Security Features Implemented
+
+- **Encrypted Seed Storage**: Seed phrases encrypted with PBKDF2 (100k iterations) + AES-GCM
+- **Password Validation**: 8+ chars, uppercase, lowercase, number
+- **Non-Custodial**: All wallet operations client-side
+- **Private Keys Never Leave Browser**: Client keys stored in IndexedDB
+- **Secure Random**: Uses `crypto.getRandomValues()`
+
+### User Flow
+
+**Setup Flow** (First Time):
+```
+1. /setup → Generate FHE keys (10-30s)
+2. /setup → Create wallet OR restore from seed
+   - Enter password (encrypted storage)
+   - Get 25-word seed phrase (SAVE IT!)
+3. /setup → Sync with blockchain (5-15 min)
+   - Connects to node.vern.cc:18081
+   - Progress bar shows % complete
+4. Continue to markets
+```
+
+**Betting Flow**:
+```
+1. / → View balance (cached or refresh)
+2. /markets/[id] → Select outcome + amount
+3. Click "Encrypt and Place Bet"
+   - Encrypts bet with FHE (~500ms)
+   - Creates Monero transaction (~1-2s)
+   - Shows tx hash + fee
+4. Click "Broadcast Transaction & Submit Bet"
+   - Broadcasts to Monero network
+   - Submits to coordinator API
+   - Bet status: active
+5. Download nonce (optional backup)
+```
+
+### Performance Optimizations
+
+- **Balance Caching**: Instant display on page load, optional refresh
+- **Lazy Worker Initialization**: Only loads when needed
+- **Progress Tracking**: Real-time updates for long operations
+- **Cached Wallet State**: Avoids re-syncing unnecessarily
+
+### Testing Checklist
+
+**Manual Tests** (When Coordinator Ready):
+- [ ] Create new wallet and verify seed display
+- [ ] Restore wallet from seed phrase
+- [ ] Sync with mainnet daemon
+- [ ] Display balance correctly
+- [ ] Create transaction without relay
+- [ ] Broadcast transaction with relay
+- [ ] Submit encrypted bet to coordinator
+- [ ] Verify bet in /bets page
+- [ ] Download nonce file
+
+**Edge Cases to Test**:
+- [ ] Incorrect password on restore
+- [ ] Insufficient balance
+- [ ] Network disconnection during sync
+- [ ] Worker termination and restart
+- [ ] Large balance (>1000 XMR)
+- [ ] Multiple wallets (clear and recreate)
 
 ---
 

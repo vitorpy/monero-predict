@@ -1,7 +1,9 @@
 <script lang="ts">
 	import type { PageData } from './$types';
 	import { encryptBet, hasKeys } from '$lib/services/fhe';
-	import { saveBet, downloadNonceFile } from '$lib/services/storage';
+	import { saveBet, downloadNonceFile, updateBetStatus } from '$lib/services/storage';
+	import { hasWallet, createTransaction, formatXMR } from '$lib/services/wallet';
+	import { submitBet, getCoordinatorAddress } from '$lib/services/coordinator';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 
@@ -11,18 +13,44 @@
 	let outcome = $state<'YES' | 'NO'>('YES');
 	let amount = $state('');
 	let encrypting = $state(false);
+	let creatingTx = $state(false);
 	let betPlaced = $state(false);
 	let commitment = $state('');
 	let betId = $state('');
+	let txHash = $state('');
+	let txFee = $state('');
 	let errorMessage = $state('');
+	let broadcasting = $state(false);
+	let broadcasted = $state(false);
 
-	// FHE status
+	// Wallet/FHE status
 	let fheReady = $state(false);
+	let walletReady = $state(false);
+
+	// Coordinator address (will be fetched)
+	let coordinatorAddress = $state('4...'); // Placeholder
+
+	// Store encrypted bet data for submission
+	let encryptedBetData = $state<{
+		outcome: Uint8Array;
+		amount: Uint8Array;
+	} | null>(null);
 
 	onMount(async () => {
 		fheReady = await hasKeys();
+		walletReady = await hasWallet();
+
 		if (!fheReady) {
 			errorMessage = 'FHE keys not found. Please complete setup first.';
+		} else if (!walletReady) {
+			errorMessage = 'Wallet not found. Please complete setup first.';
+		}
+
+		// Fetch coordinator address
+		try {
+			coordinatorAddress = await getCoordinatorAddress();
+		} catch (error) {
+			console.warn('[Market] Failed to fetch coordinator address:', error);
 		}
 	});
 
@@ -39,13 +67,24 @@
 			return;
 		}
 
+		if (!walletReady) {
+			errorMessage = 'Wallet not ready. Please complete setup first.';
+			return;
+		}
+
 		encrypting = true;
 		errorMessage = '';
 
 		try {
-			// Encrypt the bet
+			// Step 1: Encrypt the bet
 			console.log(`[Market] Encrypting bet: ${outcome} ${amountNum} XMR`);
 			const encrypted = await encryptBet(outcome === 'YES', amountNum);
+
+			// Store encrypted data for later submission
+			encryptedBetData = {
+				outcome: encrypted.outcome,
+				amount: encrypted.amount
+			};
 
 			// Convert commitment to hex for display
 			commitment = Array.from(encrypted.commitment)
@@ -55,7 +94,7 @@
 			// Generate bet ID (commitment hash first 16 chars)
 			betId = commitment.substring(0, 16);
 
-			// Save to IndexedDB
+			// Save to IndexedDB (status: pending)
 			await saveBet({
 				betId,
 				marketId: data.marketId,
@@ -69,12 +108,76 @@
 			});
 
 			console.log(`[Market] Bet encrypted and saved: ${betId}`);
+			encrypting = false;
+
+			// Step 2: Create transaction (no relay for now)
+			creatingTx = true;
+			console.log(`[Market] Creating transaction: ${amountNum} XMR to coordinator`);
+
+			const tx = await createTransaction(
+				coordinatorAddress,
+				amountNum,
+				false, // Don't relay yet (Task 7 requirement)
+				0 // Default priority
+			);
+
+			txHash = tx.txHash;
+			txFee = formatXMR(tx.fee);
+
+			// Update bet with transaction hash
+			await updateBetStatus(betId, 'pending', { txHash });
+
+			console.log(`[Market] Transaction created: ${txHash}, fee: ${txFee} XMR`);
 			betPlaced = true;
 		} catch (error) {
-			console.error('[Market] Bet encryption failed:', error);
-			errorMessage = error instanceof Error ? error.message : 'Failed to encrypt bet';
+			console.error('[Market] Bet placement failed:', error);
+			errorMessage = error instanceof Error ? error.message : 'Failed to place bet';
 		} finally {
 			encrypting = false;
+			creatingTx = false;
+		}
+	}
+
+	async function broadcastBet() {
+		broadcasting = true;
+		errorMessage = '';
+
+		try {
+			if (!encryptedBetData) {
+				throw new Error('Encrypted bet data not found');
+			}
+
+			// Step 1: Broadcast the transaction
+			console.log('[Market] Broadcasting transaction:', txHash);
+			const tx = await createTransaction(
+				coordinatorAddress,
+				parseFloat(amount),
+				true, // Relay this time!
+				0
+			);
+
+			console.log('[Market] Transaction broadcasted:', tx.txHash);
+
+			// Step 2: Submit encrypted bet to coordinator API
+			console.log('[Market] Submitting bet to coordinator...');
+			await submitBet({
+				marketId: data.marketId,
+				encryptedOutcome: encryptedBetData.outcome,
+				encryptedAmount: encryptedBetData.amount,
+				commitment,
+				txHash: tx.txHash
+			});
+
+			// Update bet status to active
+			await updateBetStatus(betId, 'active', { txHash: tx.txHash });
+			broadcasted = true;
+
+			console.log('[Market] Bet submitted successfully');
+		} catch (error) {
+			console.error('[Market] Broadcast failed:', error);
+			errorMessage = error instanceof Error ? error.message : 'Failed to broadcast transaction';
+		} finally {
+			broadcasting = false;
 		}
 	}
 
@@ -88,9 +191,11 @@
 
 	function reset() {
 		betPlaced = false;
+		broadcasted = false;
 		amount = '';
 		commitment = '';
 		betId = '';
+		txHash = '';
 		errorMessage = '';
 	}
 </script>
@@ -171,22 +276,28 @@
 					</div>
 				{/if}
 
-				<button is-="button primary large" onclick={placeBet} disabled={encrypting || !fheReady}>
+				<button
+					is-="button primary large"
+					onclick={placeBet}
+					disabled={encrypting || creatingTx || !fheReady || !walletReady}
+				>
 					{#if encrypting}
 						⏳ Encrypting bet...
+					{:else if creatingTx}
+						⏳ Creating transaction...
 					{:else}
 						🔒 Encrypt and Place Bet
 					{/if}
 				</button>
 
 				<p class="info">
-					Your bet will be encrypted using FHE. The coordinator cannot see your outcome or amount.
+					Your bet will be encrypted using FHE and a Monero transaction will be created (not broadcasted yet).
 				</p>
 			{/if}
 		</section>
 	{:else}
 		<section class="bet-success">
-			<h2>✅ Bet Encrypted Successfully</h2>
+			<h2>✅ Bet Created Successfully</h2>
 
 			<div class="info-box">
 				<div class="info-item">
@@ -198,6 +309,14 @@
 					<code class="hash">{commitment.substring(0, 32)}...</code>
 				</div>
 				<div class="info-item">
+					<span class="label">Transaction Hash:</span>
+					<code class="hash">{txHash.substring(0, 32)}...</code>
+				</div>
+				<div class="info-item">
+					<span class="label">Transaction Fee:</span>
+					<code>{txFee} XMR</code>
+				</div>
+				<div class="info-item">
 					<span class="label">Outcome:</span>
 					<span class="value">{outcome}</span>
 				</div>
@@ -207,8 +326,42 @@
 				</div>
 			</div>
 
+			{#if !broadcasted}
+				<div class="broadcast-section">
+					<p class="warning-text">
+						⚠️ Transaction created but NOT broadcasted yet. You can review the details and
+						broadcast when ready.
+					</p>
+
+					{#if errorMessage}
+						<div class="error-box">
+							<p>❌ {errorMessage}</p>
+						</div>
+					{/if}
+
+					<button
+						is-="button primary large"
+						onclick={broadcastBet}
+						disabled={broadcasting}
+					>
+						{#if broadcasting}
+							⏳ Broadcasting...
+						{:else}
+							📡 Broadcast Transaction & Submit Bet
+						{/if}
+					</button>
+				</div>
+			{:else}
+				<div class="success-box">
+					<p>✅ Transaction broadcasted and bet submitted to coordinator!</p>
+					<p class="info">
+						Your bet is now active. The coordinator will process it once the transaction confirms.
+					</p>
+				</div>
+			{/if}
+
 			<div class="actions">
-				<button is-="button primary" onclick={downloadNonce}>
+				<button is-="button" onclick={downloadNonce}>
 					💾 Download Nonce (Optional)
 				</button>
 				<button is-="button" onclick={viewBets}>View All Bets</button>
@@ -372,5 +525,30 @@
 	button:disabled {
 		opacity: 0.5;
 		cursor: not-allowed;
+	}
+
+	.broadcast-section {
+		margin: 1.5rem 0;
+		padding: 1rem;
+		background: var(--bg-secondary, #1a1a1a);
+		border: 1px solid var(--border);
+		border-radius: 4px;
+	}
+
+	.warning-text {
+		color: var(--warning, #ebcb8b);
+		margin-bottom: 1rem;
+	}
+
+	.success-box {
+		background: var(--bg-secondary, #1a1a1a);
+		border-left: 4px solid var(--success, #a3be8c);
+		padding: 1rem;
+		margin: 1.5rem 0;
+	}
+
+	.success-box .info {
+		color: var(--text-secondary, #999);
+		margin-top: 0.5rem;
 	}
 </style>

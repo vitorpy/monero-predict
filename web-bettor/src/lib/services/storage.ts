@@ -16,11 +16,19 @@ export interface FheKeys {
 
 export interface WalletData {
 	id: string;
-	seedPhrase: string; // TODO: Encrypt with user password
-	password: string; // TODO: Hash this
+	seedPhrase: string; // JSON-serialized EncryptedData (encrypted with user password via crypto.ts)
+	password: string; // DEPRECATED: Never store password, leave empty
 	primaryAddress: string;
 	createdAt: number;
-	lastSync: number;
+	lastSync: number; // Last blockchain height synced
+}
+
+export interface WalletCache {
+	id: string;
+	balance: string; // bigint as string
+	unlockedBalance: string; // bigint as string
+	syncHeight: number;
+	lastUpdated: number;
 }
 
 export interface Bet {
@@ -42,6 +50,7 @@ class BettorDatabase extends Dexie {
 	clientKeys!: EntityTable<ClientKey, 'id'>;
 	fheKeys!: EntityTable<FheKeys, 'id'>;
 	wallet!: EntityTable<WalletData, 'id'>;
+	walletCache!: EntityTable<WalletCache, 'id'>;
 	bets!: EntityTable<Bet, 'betId'>;
 
 	constructor() {
@@ -59,6 +68,15 @@ class BettorDatabase extends Dexie {
 			clientKeys: 'id, createdAt',
 			fheKeys: 'id, createdAt',
 			wallet: 'id, primaryAddress, lastSync',
+			bets: 'betId, marketId, timestamp, status, [marketId+status]'
+		});
+
+		// Version 3: Add wallet cache for performance
+		this.version(3).stores({
+			clientKeys: 'id, createdAt',
+			fheKeys: 'id, createdAt',
+			wallet: 'id, primaryAddress, lastSync',
+			walletCache: 'id, lastUpdated',
 			bets: 'betId, marketId, timestamp, status, [marketId+status]'
 		});
 	}
@@ -175,7 +193,8 @@ export async function downloadNonceFile(betId: string): Promise<void> {
 		throw new Error('Bet not found');
 	}
 
-	const blob = new Blob([bet.nonce], { type: 'application/octet-stream' });
+	// Create blob from Uint8Array
+	const blob = new Blob([bet.nonce as BlobPart], { type: 'application/octet-stream' });
 	const url = URL.createObjectURL(blob);
 	const a = document.createElement('a');
 	a.href = url;
@@ -186,10 +205,35 @@ export async function downloadNonceFile(betId: string): Promise<void> {
 	URL.revokeObjectURL(url);
 }
 
+// Wallet cache management
+export async function saveWalletCache(
+	balance: bigint,
+	unlockedBalance: bigint,
+	syncHeight: number
+): Promise<void> {
+	await db.walletCache.put({
+		id: 'default',
+		balance: balance.toString(),
+		unlockedBalance: unlockedBalance.toString(),
+		syncHeight,
+		lastUpdated: Date.now()
+	});
+}
+
+export async function getWalletCache(): Promise<WalletCache | undefined> {
+	return await db.walletCache.get('default');
+}
+
+export async function clearWalletCache(): Promise<void> {
+	await db.walletCache.delete('default');
+	console.log('[Storage] Wallet cache cleared');
+}
+
 export async function clearAllData(): Promise<void> {
 	await db.clientKeys.clear();
 	await db.fheKeys.clear();
 	await db.wallet.clear();
+	await db.walletCache.clear();
 	await db.bets.clear();
 	console.log('[Storage] All data cleared');
 }
