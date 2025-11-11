@@ -228,24 +228,28 @@
 				{#if walletMode === 'create'}
 					<!-- Create wallet form -->
 					<div class="form-group">
-						<label for="password">Password:</label>
+						<label for="password">PIN (4 digits):</label>
 						<input
 							is-="input"
 							type="password"
 							id="password"
 							bind:value={walletPassword}
-							placeholder="Min 8 chars, uppercase, lowercase, number"
+							placeholder="Enter 4-digit PIN"
+							inputmode="numeric"
+							maxlength="4"
 						/>
 					</div>
 
 					<div class="form-group">
-						<label for="password-confirm">Confirm Password:</label>
+						<label for="password-confirm">Confirm PIN:</label>
 						<input
 							is-="input"
 							type="password"
 							id="password-confirm"
 							bind:value={walletPasswordConfirm}
-							placeholder="Re-enter password"
+							placeholder="Re-enter PIN"
+							inputmode="numeric"
+							maxlength="4"
 						/>
 					</div>
 
@@ -266,13 +270,15 @@
 					</div>
 
 					<div class="form-group">
-						<label for="restore-password">Password:</label>
+						<label for="restore-password">PIN (4 digits):</label>
 						<input
 							is-="input"
 							type="password"
 							id="restore-password"
 							bind:value={walletPassword}
-							placeholder="Password to encrypt wallet"
+							placeholder="Enter 4-digit PIN"
+							inputmode="numeric"
+							maxlength="4"
 						/>
 					</div>
 

@@ -129,28 +129,21 @@ export async function decrypt(encrypted: EncryptedData, password: string): Promi
 }
 
 /**
- * Validate password strength
+ * Validate password strength (simplified to 4-digit PIN)
  *
- * @param password - Password to validate
+ * @param password - Password/PIN to validate
  * @returns Validation result with errors
  */
 export function validatePassword(password: string): { valid: boolean; errors: string[] } {
 	const errors: string[] = [];
 
-	if (password.length < 8) {
-		errors.push('Password must be at least 8 characters');
+	// Simplified: just require 4 digits
+	if (password.length !== 4) {
+		errors.push('PIN must be exactly 4 digits');
 	}
 
-	if (!/[A-Z]/.test(password)) {
-		errors.push('Password must contain at least one uppercase letter');
-	}
-
-	if (!/[a-z]/.test(password)) {
-		errors.push('Password must contain at least one lowercase letter');
-	}
-
-	if (!/[0-9]/.test(password)) {
-		errors.push('Password must contain at least one number');
+	if (!/^\d+$/.test(password)) {
+		errors.push('PIN must contain only numbers');
 	}
 
 	return {
