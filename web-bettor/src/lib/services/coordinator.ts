@@ -170,6 +170,62 @@ export async function registerServerKey(
 }
 
 /**
+ * Claim payout submission payload
+ */
+export interface ClaimSubmission {
+	betId: Uint8Array; // 32 bytes - commitment hash
+	nonce: Uint8Array; // 32 bytes - proof of bet ownership
+	payoutAddress: string; // Monero address
+}
+
+/**
+ * Claim payout response
+ */
+export interface ClaimResponse {
+	amountPiconeros: bigint;
+	amountXMR: string;
+	status: string;
+}
+
+/**
+ * Submit claim for payout
+ *
+ * @param marketId - Market ID
+ * @param claim - Claim submission data
+ * @returns Promise with payout details
+ */
+export async function submitClaim(
+	marketId: string,
+	claim: ClaimSubmission,
+	config: CoordinatorConfig = defaultConfig
+): Promise<ClaimResponse> {
+	const response = await fetch(`${config.apiUrl}/market/${marketId}/claim`, {
+		method: 'POST',
+		headers: {
+			'Content-Type': 'application/json'
+		},
+		body: JSON.stringify({
+			bet_id: Array.from(claim.betId),
+			nonce: Array.from(claim.nonce),
+			payout_address: claim.payoutAddress
+		})
+	});
+
+	if (!response.ok) {
+		const error = await response.json().catch(() => ({ error: 'Unknown error' }));
+		throw new Error(`Failed to submit claim: ${error.error || response.statusText}`);
+	}
+
+	const data = await response.json();
+
+	return {
+		amountPiconeros: BigInt(data.amount_piconeros),
+		amountXMR: (BigInt(data.amount_piconeros) / BigInt(1e12)).toString(),
+		status: data.status
+	};
+}
+
+/**
  * Check if coordinator is online
  *
  * @returns Promise with boolean indicating if coordinator is reachable
