@@ -34,7 +34,9 @@ async function initWasm(): Promise<void> {
 	console.log('[FHE] Initializing WASM module...');
 	try {
 		wasmModule = await import('$lib/wasm/monero_predict_fhe_client');
-		console.log('[FHE] WASM module loaded successfully');
+		// Call the default init function to initialize the WASM
+		await wasmModule.default();
+		console.log('[FHE] WASM module loaded and initialized successfully');
 	} catch (error) {
 		console.error('[FHE] Failed to load WASM module:', error);
 		throw new Error('Failed to initialize FHE WASM module');

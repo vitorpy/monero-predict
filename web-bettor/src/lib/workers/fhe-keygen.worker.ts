@@ -54,6 +54,15 @@ async function generateKeys(): Promise<void> {
 		// Import WASM module
 		const wasmModule = await import('$lib/wasm/monero_predict_fhe_client');
 
+		// Initialize WASM (critical step!)
+		await wasmModule.default();
+
+		ctx.postMessage({
+			type: 'progress',
+			percent: 20,
+			message: 'WASM initialized, preparing key generation...'
+		} satisfies KeygenProgressMessage);
+
 		// Progress: Generating keys
 		ctx.postMessage({
 			type: 'progress',
