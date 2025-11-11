@@ -99,6 +99,7 @@
 		<a href="/markets"><button variant-="primary">Browse Markets</button></a>
 		<a href="/bets"><button variant-="secondary">My Bets</button></a>
 		<a href="/setup"><button variant-="accent">Setup Wallet</button></a>
+		<a href="/data"><button variant-="secondary">Data Management</button></a>
 	</nav>
 
 	<hr />

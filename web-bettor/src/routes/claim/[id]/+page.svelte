@@ -3,6 +3,7 @@
 	import { submitClaim } from '$lib/services/coordinator';
 	import { updateBetStatus } from '$lib/services/storage';
 	import { getPrimaryAddress } from '$lib/services/wallet';
+	import { showSuccess, showError } from '$lib/stores/toast';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 
@@ -115,8 +116,10 @@
 
 			claimed = true;
 			console.log('[Claim] Claim submitted successfully:', response);
+			showSuccess(`Claim submitted! Payout: ${response.amountXMR} XMR`);
 		} catch (error) {
 			console.error('[Claim] Claim submission failed:', error);
+			showError('Failed to submit claim');
 
 			// Provide helpful error messages
 			if (error instanceof Error) {

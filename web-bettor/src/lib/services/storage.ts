@@ -237,3 +237,124 @@ export async function clearAllData(): Promise<void> {
 	await db.bets.clear();
 	console.log('[Storage] All data cleared');
 }
+
+// Data export/import for backup/restore
+export interface ExportData {
+	version: number;
+	exportDate: number;
+	fheKeys?: FheKeys;
+	wallet?: WalletData;
+	walletCache?: WalletCache;
+	bets: Bet[];
+}
+
+export async function exportAllData(): Promise<Blob> {
+	console.log('[Storage] Exporting all data...');
+
+	const exportData: ExportData = {
+		version: 1,
+		exportDate: Date.now(),
+		fheKeys: (await db.fheKeys.get('default')) || undefined,
+		wallet: (await db.wallet.get('default')) || undefined,
+		walletCache: (await db.walletCache.get('default')) || undefined,
+		bets: await db.bets.toArray()
+	};
+
+	// Convert Uint8Arrays to base64 for JSON serialization
+	const serialized = JSON.stringify(
+		exportData,
+		(key, value) => {
+			if (value instanceof Uint8Array) {
+				return {
+					__type: 'Uint8Array',
+					data: Array.from(value)
+				};
+			}
+			return value;
+		},
+		2
+	);
+
+	const blob = new Blob([serialized], { type: 'application/json' });
+	const sizeMB = (blob.size / 1024 / 1024).toFixed(2);
+	console.log(`[Storage] Export complete: ${sizeMB}MB`);
+
+	return blob;
+}
+
+export async function importAllData(file: File): Promise<void> {
+	console.log('[Storage] Importing data from file...');
+
+	const text = await file.text();
+	const parsed = JSON.parse(text, (key, value) => {
+		// Restore Uint8Arrays from base64
+		if (value && typeof value === 'object' && value.__type === 'Uint8Array') {
+			return new Uint8Array(value.data);
+		}
+		return value;
+	});
+
+	const data = parsed as ExportData;
+
+	// Validate version
+	if (data.version !== 1) {
+		throw new Error(`Unsupported export version: ${data.version}`);
+	}
+
+	// Clear existing data first
+	console.log('[Storage] Clearing existing data...');
+	await clearAllData();
+
+	// Import FHE keys
+	if (data.fheKeys) {
+		await db.fheKeys.put(data.fheKeys);
+		console.log('[Storage] FHE keys imported');
+	}
+
+	// Import wallet
+	if (data.wallet) {
+		await db.wallet.put(data.wallet);
+		console.log('[Storage] Wallet imported');
+	}
+
+	// Import wallet cache
+	if (data.walletCache) {
+		await db.walletCache.put(data.walletCache);
+		console.log('[Storage] Wallet cache imported');
+	}
+
+	// Import bets
+	if (data.bets && data.bets.length > 0) {
+		await db.bets.bulkPut(data.bets);
+		console.log(`[Storage] ${data.bets.length} bets imported`);
+	}
+
+	console.log('[Storage] Import complete');
+}
+
+export async function getExportStats(): Promise<{
+	hasFheKeys: boolean;
+	hasWallet: boolean;
+	betCount: number;
+	estimatedSizeMB: number;
+}> {
+	const fheKeys = await db.fheKeys.get('default');
+	const wallet = await db.wallet.get('default');
+	const betCount = await db.bets.count();
+
+	let estimatedSize = 0;
+	if (fheKeys) {
+		estimatedSize += fheKeys.clientKeyData.byteLength + fheKeys.serverKeyData.byteLength;
+	}
+	if (wallet) {
+		estimatedSize += wallet.seedPhrase.length * 2; // Rough estimate
+	}
+	estimatedSize += betCount * 1000; // ~1KB per bet estimate
+
+	return {
+		hasFheKeys: !!fheKeys,
+		hasWallet: !!wallet,
+		betCount,
+		estimatedSizeMB: estimatedSize / 1024 / 1024
+	};
+}

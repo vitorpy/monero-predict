@@ -4,6 +4,7 @@
 	import { saveBet, downloadNonceFile, updateBetStatus, getAllBets } from '$lib/services/storage';
 	import { hasWallet, createTransaction, formatXMR, getBalance } from '$lib/services/wallet';
 	import { submitBet, getCoordinatorAddress } from '$lib/services/coordinator';
+	import { showSuccess, showError } from '$lib/stores/toast';
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 
@@ -160,8 +161,10 @@
 
 			console.log(`[Market] Transaction created: ${txHash}, fee: ${txFee} XMR`);
 			betPlaced = true;
+			showSuccess(`Bet created successfully! TX fee: ${txFee} XMR`);
 		} catch (error) {
 			console.error('[Market] Bet placement failed:', error);
+			showError('Failed to create bet');
 
 			// Provide more helpful error messages
 			if (error instanceof Error) {
@@ -237,8 +240,10 @@
 			broadcasted = true;
 
 			console.log('[Market] Bet submitted successfully');
+			showSuccess('Bet broadcasted and submitted to coordinator!');
 		} catch (error) {
 			console.error('[Market] Broadcast failed:', error);
+			showError('Failed to broadcast bet');
 
 			// Provide more helpful error messages
 			if (error instanceof Error) {
